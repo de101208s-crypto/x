@@ -1747,7 +1747,9 @@ const FORECAST_URL =
     "is_day" +
     "&daily=" +
     "temperature_2m_max," +
-    "temperature_2m_min" +
+    "temperature_2m_min," +
+    "sunrise," +
+    "sunset" +
     "&timezone=Asia%2FTokyo";
 
 
@@ -1813,6 +1815,36 @@ const ICONS = {
         '<line x1="16" y1="38" x2="84" y2="38"/>' +
         '<line x1="10" y1="54" x2="90" y2="54"/>' +
         '<line x1="16" y1="70" x2="84" y2="70"/>' +
+        '</g></svg>',
+
+    sunrise:
+        '<svg viewBox="0 0 100 100">' +
+        '<path d="M20 66a30 30 0 0 1 60 0z" fill="#FFE066" stroke="#FFF6D6" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<g stroke="#FFE066" stroke-width="5" stroke-linecap="round">' +
+        '<line x1="12" y1="66" x2="5" y2="66"/>' +
+        '<line x1="88" y1="66" x2="95" y2="66"/>' +
+        '<line x1="24" y1="40" x2="19" y2="35"/>' +
+        '<line x1="76" y1="40" x2="81" y2="35"/>' +
+        '</g>' +
+        '<line x1="8" y1="75" x2="92" y2="75" stroke="#FFE9C4" stroke-width="5" stroke-linecap="round"/>' +
+        '<g stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">' +
+        '<line x1="50" y1="12" x2="50" y2="30"/>' +
+        '<polyline points="41,20 50,11 59,20"/>' +
+        '</g></svg>',
+
+    sunset:
+        '<svg viewBox="0 0 100 100">' +
+        '<path d="M20 66a30 30 0 0 1 60 0z" fill="#FFD84D" stroke="#FFF6D6" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<g stroke="#FFD84D" stroke-width="5" stroke-linecap="round">' +
+        '<line x1="12" y1="66" x2="5" y2="66"/>' +
+        '<line x1="88" y1="66" x2="95" y2="66"/>' +
+        '<line x1="24" y1="40" x2="19" y2="35"/>' +
+        '<line x1="76" y1="40" x2="81" y2="35"/>' +
+        '</g>' +
+        '<line x1="8" y1="75" x2="92" y2="75" stroke="#FFD2B0" stroke-width="5" stroke-linecap="round"/>' +
+        '<g stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">' +
+        '<line x1="50" y1="12" x2="50" y2="30"/>' +
+        '<polyline points="41,22 50,31 59,22"/>' +
         '</g></svg>'
 };
 
@@ -1965,6 +1997,95 @@ function getWeatherInfo(
                 ? "linear-gradient(165deg,#6fb1f0 0%,#3a7fd6 55%,#2e63b0 100%)"
                 : "linear-gradient(165deg,#14213d 0%,#0b1530 60%,#060a1a 100%)"
     };
+}
+
+
+/* 朝焼け・夕焼け判定（日の出/日の入り時刻はOpen-Meteoの日別データを使用） */
+let cachedSunrise = null;
+let cachedSunset = null;
+let cachedWeatherCode = null;
+let cachedWeatherIsDay = 1;
+
+const SUNRISE_GLOW_BG =
+    "linear-gradient(165deg,#ffcf8a 0%,#ff9a62 50%,#d9627a 100%)";
+const SUNSET_GLOW_BG =
+    "linear-gradient(165deg,#ffb35c 0%,#ff7a45 45%,#a8456b 100%)";
+
+function parseLocalForecastTime(value) {
+    if (!value) return null;
+
+    // Open-Meteo returns local date-time strings without a timezone suffix.
+    const match = String(value).match(
+        /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2})/
+    );
+
+    if (!match) return null;
+
+    return new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4]),
+        Number(match[5]),
+        0,
+        0
+    );
+}
+
+function getGlowKind(now) {
+    if (!cachedSunrise || !cachedSunset) return "";
+
+    const time = now.getTime();
+
+    // 日の出30分前〜45分後
+    if (
+        time >= cachedSunrise.getTime() - 30 * 60000 &&
+        time <= cachedSunrise.getTime() + 45 * 60000
+    ) {
+        return "sunrise";
+    }
+
+    // 日の入り45分前〜30分後
+    if (
+        time >= cachedSunset.getTime() - 45 * 60000 &&
+        time <= cachedSunset.getTime() + 30 * 60000
+    ) {
+        return "sunset";
+    }
+
+    return "";
+}
+
+function applySunriseSunsetGlow() {
+    if (cachedWeatherCode === null) return;
+
+    const info = getWeatherInfo(
+        cachedWeatherCode,
+        cachedWeatherIsDay
+    );
+
+    const kind = getGlowKind(new Date());
+
+    let icon = info.icon;
+    let description = info.desc;
+    let background = info.bg;
+
+    // 参考HTMLと同様、快晴〜くもりのときだけ朝焼け/夕焼け表示にする。
+    if (kind && cachedWeatherCode <= 3) {
+        if (kind === "sunrise") {
+            icon = ICONS.sunrise;
+            description = "朝焼け・" + info.desc;
+            background = SUNRISE_GLOW_BG;
+        } else {
+            icon = ICONS.sunset;
+            description = "夕焼け・" + info.desc;
+            background = SUNSET_GLOW_BG;
+        }
+    }
+
+    document.getElementById("weatherIconWrap").innerHTML = icon;
+    document.getElementById("weatherConditionSmall").textContent = description;
+    document.getElementById("weatherPanel").style.background = background;
 }
 
 
@@ -2212,10 +2333,21 @@ async function updateWeather() {
         ).textContent =
             feels + "°";
 
-        document.getElementById(
-            "weatherPanel"
-        ).style.background =
-            info.bg;
+        cachedWeatherCode = Number(code);
+        cachedWeatherIsDay = Number(isDay);
+
+        cachedSunrise = parseLocalForecastTime(
+            data.daily && data.daily.sunrise
+                ? data.daily.sunrise[0]
+                : null
+        );
+        cachedSunset = parseLocalForecastTime(
+            data.daily && data.daily.sunset
+                ? data.daily.sunset[0]
+                : null
+        );
+
+        applySunriseSunsetGlow();
 
         const now =
             new Date();
@@ -2249,6 +2381,7 @@ async function updateWeather() {
 
 
 updateWeather();
+setInterval(applySunriseSunsetGlow, 60 * 1000);
 
 
 function scheduleWeatherUpdate() {
