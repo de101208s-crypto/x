@@ -963,17 +963,22 @@ button {
 }
 </style>
 
-<!-- ===== 電子ペーパー風(黒背景版・天気も対応)。形・配置・フォント・秒表示は元のまま ===== -->
+<!-- ===== 電子ペーパー風(シンプル版・暗い紙色の背景)。形・配置・フォント・秒表示は元のまま ===== -->
 <style id="epaper-theme">
-:root{--bg:#131311;--card:#1B1B18;--ink:#DAD4C2;--sub:#8C8774;--red:#C8574A;--blue:#8FB4CC}
+:root{--bg:#1C1B18;--card:#1B1B18;--ink:#DAD4C2;--sub:#8C8774;--red:#C8574A;--blue:#8FB4CC}
+/* 背景は「暗い紙」: 地色 + 細かな紙の凹凸 + 点(ムラなし)。パネルは紙の上に薄く重ねる */
 html,body,.dashboard{background:var(--bg) !important}
+
+/* 画面全体を「少ない色数+粒状ノイズ」に変換して描き直す(文字の縁も荒くなる) */
 body{filter:saturate(.7) contrast(.92)}
-body.night{filter:saturate(.6) contrast(.9) brightness(.62)}
-/* 切り替わりの演出: ほんの一瞬だけ色が薄れて少し暗くなる程度 */
-body.flash{filter:saturate(.25) contrast(.8) brightness(.82)}
-body::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.07;z-index:9999;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
-.clock-panel{background:var(--card) !important}
+body.night{filter:saturate(.6) contrast(.9) brightness(.6)}
+body.flash{filter:saturate(.25) contrast(.85) brightness(.82)}
+/* 重いときの軽量モード(ノイズと量子化なし) */
+body.lite{filter:saturate(.68) contrast(.9)}
+body.lite.night{filter:saturate(.58) contrast(.88) brightness(.6)}
+body.lite.flash{filter:saturate(.25) contrast(.8) brightness(.82)}
+
+.clock-panel{background:rgba(0,0,0,.20) !important;box-shadow:none !important;border-color:rgba(218,212,194,.16) !important}
 .clock-hours{color:var(--red) !important;text-shadow:none !important}
 .clock-minutes{color:var(--blue) !important;text-shadow:none !important}
 .clock-seconds{color:var(--ink) !important;text-shadow:none !important}
@@ -984,7 +989,12 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.07;z-
 .timer-hours-display,.timer-minutes-display,.timer-seconds-display,.timer-colon-display,.timer-colon2-display{text-shadow:none !important}
 .start-button{background:var(--red) !important;box-shadow:none !important}
 
-/* 天気カード: グラデーションをやめて、くすんだ単色のベタ塗りに(色は天気に合わせてJSが決める) */
+/* ゴースト: 更新直後だけ前の表示が薄く残って消える */
+.clock-hours,.clock-minutes,.clock-seconds{transition:text-shadow 1.6s ease-out}
+body.ghost .clock-hours{text-shadow:2px 1px 0 rgba(200,87,74,.16) !important}
+body.ghost .clock-minutes{text-shadow:2px 1px 0 rgba(143,180,204,.16) !important}
+
+/* 天気カード: くすんだ単色のベタ塗り(色は天気に合わせてJSが決める) */
 #weatherPanel{background:var(--wcard,#3F6E8C) !important;transition:none !important;box-shadow:none !important}
 </style>
 </head>
@@ -2463,17 +2473,17 @@ window.addEventListener('touchstart', () => document.documentElement.requestFull
 
 
 <script>
-/* 電子ペーパー風: 天気カードの色をくすませる / 分が変わる瞬間にごく軽く色が薄れる / 22時〜6時は暗くする */
+/* 電子ペーパー風: フィルターで描画 / 天気カードをくすませる / 分が変わる瞬間に軽く色が薄れて残像 / 22時〜6時は暗く */
 (function(){
-  var cfg = { flashMs: 160, nightStart: 22, nightEnd: 6, mute: 0.5 };
+  var cfg = { lite: false, flashMs: 160, ghostMs: 1600, nightStart: 22, nightEnd: 6, mute: 0.5 };
   var GRAY = [138, 136, 124];
+  if (cfg.lite) document.body.classList.add("lite");
 
   function night(){
     var h = new Date().getHours();
     document.body.classList.toggle("night", h >= cfg.nightStart || h < cfg.nightEnd);
   }
 
-  // 天気カードの元グラデーションから中間色を取り出して、灰色寄りに混ぜた単色にする
   var wp = document.getElementById("weatherPanel");
   function muteCard(){
     if (!wp) return;
@@ -2497,8 +2507,10 @@ window.addEventListener('touchstart', () => document.documentElement.requestFull
     new MutationObserver(function(){
       if (m.textContent === last) return;
       last = m.textContent; night();
-      document.body.classList.add("flash");
-      setTimeout(function(){ document.body.classList.remove("flash"); }, cfg.flashMs);
+      var b = document.body;
+      b.classList.add("flash", "ghost");
+      setTimeout(function(){ b.classList.remove("flash"); }, cfg.flashMs);
+      setTimeout(function(){ b.classList.remove("ghost"); }, cfg.ghostMs);
     }).observe(m, { childList: true, characterData: true, subtree: true });
   }
   night(); setInterval(night, 60000);
