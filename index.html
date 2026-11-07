@@ -962,6 +962,31 @@ button {
     }
 }
 </style>
+
+<!-- ===== 電子ペーパー風(黒背景版・天気も対応)。形・配置・フォント・秒表示は元のまま ===== -->
+<style id="epaper-theme">
+:root{--bg:#131311;--card:#1B1B18;--ink:#DAD4C2;--sub:#8C8774;--red:#C8574A;--blue:#8FB4CC}
+html,body,.dashboard{background:var(--bg) !important}
+body{filter:saturate(.7) contrast(.92)}
+body.night{filter:saturate(.6) contrast(.9) brightness(.62)}
+/* 切り替わりの演出: ほんの一瞬だけ色が薄れて少し暗くなる程度 */
+body.flash{filter:saturate(.25) contrast(.8) brightness(.82)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.07;z-index:9999;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
+.clock-panel{background:var(--card) !important}
+.clock-hours{color:var(--red) !important;text-shadow:none !important}
+.clock-minutes{color:var(--blue) !important;text-shadow:none !important}
+.clock-seconds{color:var(--ink) !important;text-shadow:none !important}
+.clock-colon{color:var(--ink) !important}
+.clock-date{color:var(--sub) !important}
+.timer-hours-display{color:var(--red) !important}
+.timer-minutes-display{color:var(--blue) !important}
+.timer-hours-display,.timer-minutes-display,.timer-seconds-display,.timer-colon-display,.timer-colon2-display{text-shadow:none !important}
+.start-button{background:var(--red) !important;box-shadow:none !important}
+
+/* 天気カード: グラデーションをやめて、くすんだ単色のベタ塗りに(色は天気に合わせてJSが決める) */
+#weatherPanel{background:var(--wcard,#3F6E8C) !important;transition:none !important;box-shadow:none !important}
+</style>
 </head>
 <body>
 <!DOCTYPE html>
@@ -2436,4 +2461,47 @@ window.addEventListener('click', () => document.documentElement.requestFullscree
 window.addEventListener('touchstart', () => document.documentElement.requestFullscreen());
 </script>
 
+
+<script>
+/* 電子ペーパー風: 天気カードの色をくすませる / 分が変わる瞬間にごく軽く色が薄れる / 22時〜6時は暗くする */
+(function(){
+  var cfg = { flashMs: 160, nightStart: 22, nightEnd: 6, mute: 0.5 };
+  var GRAY = [138, 136, 124];
+
+  function night(){
+    var h = new Date().getHours();
+    document.body.classList.toggle("night", h >= cfg.nightStart || h < cfg.nightEnd);
+  }
+
+  // 天気カードの元グラデーションから中間色を取り出して、灰色寄りに混ぜた単色にする
+  var wp = document.getElementById("weatherPanel");
+  function muteCard(){
+    if (!wp) return;
+    var hexes = (wp.style.background || "").match(/#[0-9a-fA-F]{6}/g);
+    if (!hexes || !hexes.length) return;
+    var hex = hexes[Math.min(1, hexes.length - 1)].slice(1);
+    var c = [0, 2, 4].map(function(i, k){
+      var v = parseInt(hex.substr(i, 2), 16);
+      return Math.round(v * (1 - cfg.mute) + GRAY[k] * cfg.mute);
+    });
+    document.documentElement.style.setProperty("--wcard", "rgb(" + c.join(",") + ")");
+  }
+  if (wp) {
+    new MutationObserver(muteCard).observe(wp, { attributes: true, attributeFilter: ["style"] });
+    muteCard();
+  }
+
+  var m = document.getElementById("clockMinutes");
+  if (m) {
+    var last = m.textContent;
+    new MutationObserver(function(){
+      if (m.textContent === last) return;
+      last = m.textContent; night();
+      document.body.classList.add("flash");
+      setTimeout(function(){ document.body.classList.remove("flash"); }, cfg.flashMs);
+    }).observe(m, { childList: true, characterData: true, subtree: true });
+  }
+  night(); setInterval(night, 60000);
+})();
+</script>
 </html>
