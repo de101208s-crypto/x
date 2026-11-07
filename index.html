@@ -962,6 +962,41 @@ button {
     }
 }
 </style>
+
+<!-- ===== 電子ペーパー風(シンプル版・暗い紙色の背景)。形・配置・フォント・秒表示は元のまま ===== -->
+<style id="epaper-theme">
+:root{--bg:#1C1B18;--card:#1B1B18;--ink:#DAD4C2;--sub:#8C8774;--red:#D9695B;--blue:#A4C4D8}
+/* 背景は「暗い紙」: 地色 + 細かな紙の凹凸 + 点(ムラなし)。パネルは紙の上に薄く重ねる */
+html,body,.dashboard{background:var(--bg) !important}
+
+/* 画面全体を「少ない色数+粒状ノイズ」に変換して描き直す(文字の縁も荒くなる) */
+body{filter:saturate(.7) contrast(.92)}
+body.night{filter:saturate(.6) contrast(.9) brightness(.6)}
+body.flash{filter:saturate(.25) contrast(.85) brightness(.82)}
+/* 重いときの軽量モード(ノイズと量子化なし) */
+body.lite{filter:saturate(.68) contrast(.9)}
+body.lite.night{filter:saturate(.58) contrast(.88) brightness(.6)}
+body.lite.flash{filter:saturate(.25) contrast(.8) brightness(.82)}
+
+.clock-panel{background:#3A3832 !important;box-shadow:none !important;border-color:rgba(218,212,194,.22) !important}
+.clock-hours{color:var(--red) !important;text-shadow:none !important}
+.clock-minutes{color:var(--blue) !important;text-shadow:none !important}
+.clock-seconds{color:var(--ink) !important;text-shadow:none !important}
+.clock-colon{color:var(--ink) !important}
+.clock-date{color:var(--sub) !important}
+.timer-hours-display{color:var(--red) !important}
+.timer-minutes-display{color:var(--blue) !important}
+.timer-hours-display,.timer-minutes-display,.timer-seconds-display,.timer-colon-display,.timer-colon2-display{text-shadow:none !important}
+.start-button{background:var(--red) !important;box-shadow:none !important}
+
+/* ゴースト: 更新直後だけ前の表示が薄く残って消える */
+.clock-hours,.clock-minutes,.clock-seconds{transition:text-shadow 1.6s ease-out}
+body.ghost .clock-hours{text-shadow:2px 1px 0 rgba(200,87,74,.16) !important}
+body.ghost .clock-minutes{text-shadow:2px 1px 0 rgba(143,180,204,.16) !important}
+
+/* 天気カード: くすんだ単色のベタ塗り(色は天気に合わせてJSが決める) */
+#weatherPanel{background:var(--wcard,#3F6E8C) !important;transition:none !important;box-shadow:none !important}
+</style>
 </head>
 <body>
 <!DOCTYPE html>
@@ -2436,4 +2471,49 @@ window.addEventListener('click', () => document.documentElement.requestFullscree
 window.addEventListener('touchstart', () => document.documentElement.requestFullscreen());
 </script>
 
+
+<script>
+/* 電子ペーパー風: フィルターで描画 / 天気カードをくすませる / 分が変わる瞬間に軽く色が薄れて残像 / 22時〜6時は暗く */
+(function(){
+  var cfg = { lite: false, flashMs: 160, ghostMs: 1600, nightStart: 22, nightEnd: 6, mute: 0.22 };
+  var GRAY = [138, 136, 124];
+  if (cfg.lite) document.body.classList.add("lite");
+
+  function night(){
+    var h = new Date().getHours();
+    document.body.classList.toggle("night", h >= cfg.nightStart || h < cfg.nightEnd);
+  }
+
+  var wp = document.getElementById("weatherPanel");
+  function muteCard(){
+    if (!wp) return;
+    var hexes = (wp.style.background || "").match(/#[0-9a-fA-F]{6}/g);
+    if (!hexes || !hexes.length) return;
+    var hex = hexes[Math.min(1, hexes.length - 1)].slice(1);
+    var c = [0, 2, 4].map(function(i, k){
+      var v = parseInt(hex.substr(i, 2), 16);
+      return Math.round(v * (1 - cfg.mute) + GRAY[k] * cfg.mute);
+    });
+    document.documentElement.style.setProperty("--wcard", "rgb(" + c.join(",") + ")");
+  }
+  if (wp) {
+    new MutationObserver(muteCard).observe(wp, { attributes: true, attributeFilter: ["style"] });
+    muteCard();
+  }
+
+  var m = document.getElementById("clockMinutes");
+  if (m) {
+    var last = m.textContent;
+    new MutationObserver(function(){
+      if (m.textContent === last) return;
+      last = m.textContent; night();
+      var b = document.body;
+      b.classList.add("flash", "ghost");
+      setTimeout(function(){ b.classList.remove("flash"); }, cfg.flashMs);
+      setTimeout(function(){ b.classList.remove("ghost"); }, cfg.ghostMs);
+    }).observe(m, { childList: true, characterData: true, subtree: true });
+  }
+  night(); setInterval(night, 60000);
+})();
+</script>
 </html>
